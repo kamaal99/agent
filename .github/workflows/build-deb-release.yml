@@ -9,9 +9,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up GPG
       run: |
@@ -56,10 +59,11 @@ jobs:
         dpkg-sig --sign builder -k $GPG_KEY_ID ../*.deb
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: debian-package
         path: ../*.deb
+        retention-days: 5
 
     - name: Cleanup sensitive data
       if: always()
