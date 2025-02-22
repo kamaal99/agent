@@ -268,41 +268,217 @@ func updateNginxConfigFileConfig(
 	directoryMap *DirectoryMap,
 	seenCerts map[string]*x509.Certificate,
 ) error {
+	log.Printf("Starting updateNginxConfigFileConfig")
 	err := CrossplaneConfigTraverse(&conf,
 		func(parent *crossplane.Directive, directive *crossplane.Directive) (bool, error) {
+			log.Printf("Traversing directive: %s, Args: %v", directive.Directive, directive.Args)
 			switch directive.Directive {
 			case "log_format":
+				log.Printf("Handling 'log_format' directive with args: %v", directive.Args)
 				if len(directive.Args) >= 2 {
 					if directive.Args[0] == "ltsv" {
 						formatMap[directive.Args[0]] = "ltsv"
+						log.Printf("Set log_format '%s' to 'ltsv'", directive.Args[0])
 					} else {
-						formatMap[directive.Args[0]] = strings.Join(directive.Args[1:], "")
+						combinedFormat := strings.Join(directive.Args[1:], "")
+						formatMap[directive.Args[0]] = combinedFormat
+						log.Printf("Set log_format '%s' to '%s'", directive.Args[0], combinedFormat)
 					}
+				} else {
+					log.Printf("Insufficient arguments for log_format: %v", directive.Args)
 				}
 			case "root":
+				log.Printf("Handling 'root' directive with arg: %s", directive.Args[0])
 				if err := updateNginxConfigFileWithRoot(aux, directive.Args[0], seen, allowedDirectories, directoryMap); err != nil {
+					log.Printf("Error in updateNginxConfigFileWithRoot for root %s: %v", directive.Args[0], err)
 					return true, err
 				}
+				log.Printf("Successfully updated root directive: %s", directive.Args[0])
 			case "ssl_certificate", "proxy_ssl_certificate", "ssl_client_certificate", "ssl_trusted_certificate":
+				log.Printf("Handling SSL certificate directive '%s' with arg: %s", directive.Directive, directive.Args[0])
 				if err := updateNginxConfigWithCert(directive.Directive, directive.Args[0], nginxConfig, aux, hostDir, directoryMap, allowedDirectories, seenCerts); err != nil {
+					log.Printf("Error updating SSL certificate for directive %s, file %s: %v", directive.Directive, directive.Args[0], err)
 					return true, err
 				}
+				log.Printf("Successfully updated SSL certificate for directive %s", directive.Directive)
 			case "access_log":
+				log.Printf("Handling 'access_log' directive with arg: %s", directive.Args[0])
+				accessLogFormat := getAccessLogDirectiveFormat(directive)
+				log.Printf("Determined access_log format: %s", accessLogFormat)
 				updateNginxConfigWithAccessLog(
 					directive.Args[0],
-					getAccessLogDirectiveFormat(directive),
+					accessLogFormat,
 					nginxConfig, formatMap, seen)
+				log.Printf("Updated access_log directive with file: %s and format: %s", directive.Args[0], accessLogFormat)
 			case "error_log":
+				log.Printf("Handling 'error_log' directive with arg: %s", directive.Args[0])
+				errorLogLevel := getErrorLogDirectiveLevel(directive)
+				log.Printf("Determined error_log level: %s", errorLogLevel)
 				updateNginxConfigWithErrorLog(
 					directive.Args[0],
-					getErrorLogDirectiveLevel(directive),
+					errorLogLevel,
 					nginxConfig, seen)
+				log.Printf("Updated error_log directive with file: %s and level: %s", directive.Args[0], errorLogLevel)
+			case "ssl_certificate_key":
+				log.Printf("Handling 'ssl_certificate_key' directive with args: %v", directive.Args)
+				if len(directive.Args) > 0 {
+					keyFile := directive.Args[0]
+			
+					// Always add the key file itself to the aux zip, if it exists.
+					if err := updateAuxFileOnly(
+						directive.Directive,
+						keyFile,
+						aux,
+						hostDir,
+						directoryMap,
+						allowedDirectories,
+					); err != nil {
+						log.Printf("Error in updateAuxFileOnly for ssl_certificate_key %s: %v", keyFile, err)
+						return true, err
+					}
+					log.Printf("Successfully updated ssl_certificate_key file: %s", keyFile)
+			
+					// Only sync certificates.json if the key file name starts with "certs_"
+					keyFileBase := filepath.Base(keyFile) // e.g. "certs_example.key"
+					if strings.HasPrefix(keyFileBase, "certs_") {
+						keyDir := filepath.Dir(keyFile)
+						jsonPath := filepath.Join(keyDir, "certificates.json")
+						log.Printf("Key file %q begins with 'certs_', updating certificates.json at: %s", keyFileBase, jsonPath)
+			
+						if err := updateAuxFileOnly(
+							"certificates.json",
+							jsonPath,
+							aux,
+							hostDir,
+							directoryMap,
+							allowedDirectories,
+						); err != nil {
+							log.Printf("Error in updateAuxFileOnly for certificates.json: %v", err)
+							return true, err
+						}
+						log.Printf("Successfully updated certificates.json auxiliary file")
+					} else {
+						log.Printf("Key file %q does not begin with 'certs_', skipping certificates.json sync", keyFileBase)
+					}
+				} else {
+					log.Printf("No arguments provided for ssl_certificate_key directive")
+				}			
+			case "modsecurity_rules_file":
+				log.Printf("Handling 'modsecurity_rules_file' directive with args: %v", directive.Args)
+				if len(directive.Args) > 0 {
+					if err := updateAuxFileOnly(
+						directive.Directive,
+						directive.Args[0],
+						aux,
+						hostDir,
+						directoryMap,
+						allowedDirectories,
+					); err != nil {
+						log.Printf("Error in updateAuxFileOnly for modsecurity_rules_file %s: %v", directive.Args[0], err)
+						return true, err
+					}
+					log.Printf("Successfully updated modsecurity_rules_file: %s", directive.Args[0])
+					if strings.Contains(directive.Args[0], "modsec_ratelimit") {
+						modsecFile := directive.Args[0]
+						parts := strings.SplitN(modsecFile, "modsec_ratelimit_", 2)
+						if len(parts) == 2 {
+							suffix := strings.TrimSuffix(parts[1], ".conf")
+							metaFileName := fmt.Sprintf("ratelimit_meta_%s.json", suffix)
+							metaFilePath := filepath.Join(filepath.Dir(modsecFile), metaFileName)
+							log.Printf("Updating auxiliary file for ratelimit meta: %s", metaFilePath)
+							if err := updateAuxFileOnly(
+								directive.Directive,
+								metaFilePath,
+								aux,
+								hostDir,
+								directoryMap,
+								allowedDirectories,
+							); err != nil {
+								log.Printf("Error updating ratelimit meta file %s: %v", metaFilePath, err)
+								return true, err
+							}
+							log.Printf("Successfully updated ratelimit meta file: %s", metaFilePath)
+						} else {
+							log.Printf("Unexpected format for modsec_ratelimit file: %s", modsecFile)
+						}
+					}
+				} else {
+					log.Printf("No arguments provided for modsecurity_rules_file directive")
+				}
+			default:
+				log.Printf("Encountered unhandled directive: %s", directive.Directive)
 			}
 			return true, nil
 		})
 	if err != nil {
+		log.Printf("Error during CrossplaneConfigTraverse: %v", err)
 		return err
 	}
+	log.Printf("Successfully completed updateNginxConfigFileConfig")
+	return nil
+}
+
+func updateAuxFileOnly(
+	directiveName string,
+	filePath string,
+	aux *zip.Writer,
+	rootDir string,
+	directoryMap *DirectoryMap,
+	allowedDirectories map[string]struct{},
+) error {
+	// If the path contains a variable, we skip it because we cannot resolve the actual file location
+	if strings.Contains(filePath, "$") {
+		return nil
+	}
+
+	// If it is not absolute, we build an absolute path using rootDir
+	if !filepath.IsAbs(filePath) {
+		filePath = filepath.Join(rootDir, filePath)
+	}
+
+	// 1) Define the filenames you want to exclude
+	excluded := map[string]struct{}{
+		".openssl.conf": {},
+		"server.crt":    {},
+		"server.csr":    {},
+		"server.key":    {},
+	}
+
+	// 2) Check if the basename is one of the excluded files
+	filename := filepath.Base(filePath)
+	if _, found := excluded[filename]; found {
+		log.Debugf("Skipping excluded file: %s", filePath)
+		return nil
+	}
+
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("could not stat file (%s): %v", filePath, err)
+	}
+
+	// Check that this path is within an allowed directory
+	isAllowed := false
+	for dir := range allowedDirectories {
+		if strings.HasPrefix(filePath, dir) {
+			isAllowed = true
+			break
+		}
+	}
+	if !isAllowed {
+		log.Infof("%s: skipping %s (outside allowed directories)", directiveName, filePath)
+		return nil
+	}
+
+	// Add file info to the DirectoryMap
+	if err := directoryMap.appendFile(filepath.Dir(filePath), info); err != nil {
+		return err
+	}
+
+	// Finally, add the file to the auxiliary zip payload
+	if err := aux.AddFile(filePath); err != nil {
+		return fmt.Errorf("could not add file (%s) to aux payload for %s: %w", filePath, directiveName, err)
+	}
+
 	return nil
 }
 
