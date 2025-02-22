@@ -1,0 +1,59 @@
+name: Build and Publish Debian Package
+
+on:
+  # You can trigger this workflow on tags that look like "vX.Y.Z", "release-X", etc.
+  push:
+    tags:
+      - 'v*'
+      - 'release-*'
+
+jobs:
+  build-deb-and-release:
+    runs-on: ubuntu-22.04
+    steps:
+      # 1) Check out code
+      - name: Check out
+        uses: actions/checkout@v4
+
+      # 2) Set up Go (the version is automatically pulled from your go.mod)
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      # 3) Install packaging tools (NFPM, etc.)
+      - name: Install Tools
+        run: make install-tools
+        # "install-tools" calls the "Makefile.tools" logic,
+        # which installs NFPM (needed to generate .deb packages).
+
+      # 4) Build the .deb packages
+      - name: Build Packages
+        run: |
+          # This builds packages for all supported distros using .nfpm.yaml,
+          # resulting in clean Debian packages like `nginx-agent-<VERSION>~<codename>_<arch>.deb`
+          # stored in ./build/github/packaging/
+          make package
+
+      # 5) Upload the .deb to the "Actions" tab as an artifact (optional)
+      - name: Upload .deb artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-artifact
+          path: ./build/github/packaging/*.deb
+          # This step is optional but nice to have for debugging or archiving.
+          # Updated to point to the correct directory after `make package`.
+
+      # 6) Attach the .deb to the GitHub Release
+      - name: Upload to GitHub Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ./build/github/packaging/*.deb
+          file_glob: true
+          # The lines below control how the action finds or creates a release
+          # based on the tag that triggered the workflow:
+          tag: ${{ github.ref_name }}     # e.g. "v1.2.3" or "release-1.2.3"
+          release_name: "Release ${{ github.ref_name }}"
+          overwrite: true
+          prerelease: false
