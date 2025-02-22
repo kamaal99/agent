@@ -10,39 +10,33 @@ jobs:
   build-deb-and-release:
     runs-on: ubuntu-22.04
     steps:
-      # 1) Check out code with full history to include tags
       - name: Check out
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history including tags
+          fetch-depth: 0
 
-      # 2) Set up Go
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
 
-      # 3) Install packaging tools (NFPM, etc.)
       - name: Install Tools
         run: make install-tools
 
-      # 4) Build the .deb packages without GPG signing
       - name: Build Packages
         run: |
-          # Build packages without requiring GPG signing
-          # NFPM_SIGNING_KEY_FILE is left unset to skip signing in nfpm
+          echo "$INDIGO_GPG_AGENT" | base64 --decode > .key.asc
           make package
         env:
-          NFPM_SIGNING_KEY_FILE: ""  # Explicitly unset to avoid GPG requirement
+          INDIGO_GPG_AGENT: ${{ secrets.INDIGO_GPG_AGENT }}
+          NFPM_SIGNING_KEY_FILE: ".key.asc"
 
-      # 5) Upload the .deb to the "Actions" tab as an artifact (optional)
       - name: Upload .deb artifact (optional)
         uses: actions/upload-artifact@v4
         with:
           name: deb-artifact
           path: ./build/github/packaging/*.deb
 
-      # 6) Attach the .deb to the GitHub Release
       - name: Upload to GitHub Release
         uses: svenstaro/upload-release-action@v2
         with:
