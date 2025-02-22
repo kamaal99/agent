@@ -25,11 +25,10 @@ jobs:
 
       - name: Build Packages
         run: |
-          echo "$INDIGO_GPG_AGENT" | base64 --decode > .key.asc
+          # Build packages without GPG signing
           make package
         env:
-          INDIGO_GPG_AGENT: ${{ secrets.INDIGO_GPG_AGENT }}
-          NFPM_SIGNING_KEY_FILE: ".key.asc"
+          NFPM_SIGNING_KEY_FILE: ""  # Explicitly unset to skip signing
 
       - name: Upload .deb artifact (optional)
         uses: actions/upload-artifact@v4
