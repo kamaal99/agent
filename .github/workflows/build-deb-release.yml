@@ -45,7 +45,50 @@ jobs:
     - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential devscripts debhelper
+        sudo apt-get install -y build-essential devscripts debhelper dh-make
+
+    - name: Setup Debian packaging
+      run: |
+        # Create debian directory if it doesn't exist
+        mkdir -p debian
+        
+        # Create debian/changelog
+        cat > debian/changelog <<EOF
+        mypackage (1.0.0-1) unstable; urgency=medium
+
+          * Initial release
+          * Add your changes here
+
+         -- Your Name <your.email@example.com>  $(date -R)
+        EOF
+        
+        # Create debian/control
+        cat > debian/control <<EOF
+        Source: mypackage
+        Section: utils
+        Priority: optional
+        Maintainer: Your Name <your.email@example.com>
+        Build-Depends: debhelper-compat (= 13)
+        Standards-Version: 4.5.1
+
+        Package: mypackage
+        Architecture: any
+        Depends: \${shlibs:Depends}, \${misc:Depends}
+        Description: My Package Description
+         A longer description of your package
+         spanning multiple lines.
+        EOF
+        
+        # Create debian/rules
+        cat > debian/rules <<EOF
+        #!/usr/bin/make -f
+        %:
+          dh \$@
+        EOF
+        chmod +x debian/rules
+        
+        # Create debian/compat
+        echo "13" > debian/compat
 
     - name: Build package
       run: |
