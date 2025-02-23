@@ -79,12 +79,8 @@ jobs:
          spanning multiple lines.
         EOF
         
-        # Create debian/rules
-        cat > debian/rules <<EOF
-        #!/usr/bin/make -f
-        %:
-          dh \$@
-        EOF
+        # Create debian/rules (using printf to preserve tabs)
+        printf '#!/usr/bin/make -f\n%%:\n\tdh $@\n' > debian/rules
         chmod +x debian/rules
         
         # Create debian/compat
