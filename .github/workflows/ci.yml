@@ -325,65 +325,65 @@ jobs:
   #     - name: Run Performance Tests
   #       run: docker run -v ${GITHUB_WORKSPACE}:/home/nginx/ --rm nginx-agent-benchmark:1.0.0
 
-  build-signed-snapshot:
-    name: Build signed snapshot
-    runs-on: ubuntu-22.04
-    if: ${{ !startsWith(github.ref_name, 'release-') && !startsWith(github.ref_name, 'dependabot/') && !github.event.pull_request.head.repo.fork }}
-    steps:
-      - uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v4.1.4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
-        with:
-          go-version-file: 'go.mod'
-      - name: Setup build environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gpgv1 monkeysphere 
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@${{ env.NFPM_VERSION }}
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
-      - name: Build Docker Image
-        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
-        with:
-          file: scripts/packages/packager/Dockerfile
-          tags: build-signed-packager:1.0.0
-          context: '.'
-          push: false
-          load: true
-          no-cache: true
-          build-args: |
-            package_type=signed-package
-      - name: Build Packages
-        env:
-          INDIGO_GPG_AGENT: ${{ secrets.INDIGO_GPG_AGENT }}
-          NFPM_SIGNING_KEY_FILE: .key.asc
-        run: |
-          echo "$INDIGO_GPG_AGENT" | base64 --decode > .key.asc
-          make clean package
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
-        with:
-          name: nginx-agent-signed-snapshots
-          path: ./build/azure/packages/nginx-agent.tar.gz
-          retention-days: 1
-      - name: Azure Login
-        uses: azure/login@6b2456866fc08b011acb422a92a4aa20e2c4de32 # v2.1.0
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-      - name: Azure Upload Snapshot
-        uses: azure/CLI@965c8d7571d2231a54e321ddd07f7b10317f34d9 # v2.0.0
-        with:
-          inlineScript: |
-            if ${{ github.event_name == 'pull_request'}}; then
-              GIT_BRANCH=${GITHUB_HEAD_REF}
-            else 
-              GIT_BRANCH=${GITHUB_REF##*/}
-            fi
-            for i in ./build/azure/packages/nginx-agent*; do 
-              az storage blob upload --auth-mode=login -f "$i" -c ${{ secrets.AZURE_CONTAINER_NAME }} \
-              --account-name ${{ secrets.AZURE_ACCOUNT_NAME }} --overwrite -n nginx-agent/${GIT_BRANCH}/${i##*/}
-            done
+  # build-signed-snapshot:
+  #   name: Build signed snapshot
+  #   runs-on: ubuntu-22.04
+  #   if: ${{ !startsWith(github.ref_name, 'release-') && !startsWith(github.ref_name, 'dependabot/') && !github.event.pull_request.head.repo.fork }}
+  #   steps:
+  #     - uses: actions/checkout@0ad4b8fadaa221de15dcec353f45205ec38ea70b # v4.1.4
+  #       with:
+  #         fetch-depth: 0
+  #     - uses: actions/setup-go@0c52d547c9bc32b1aa3301fd7a9cb496313a4491 # v5.0.0
+  #       with:
+  #         go-version-file: 'go.mod'
+  #     - name: Setup build environment
+  #       run: |
+  #         sudo apt-get update
+  #         sudo apt-get install -y gpgv1 monkeysphere 
+  #         go install github.com/goreleaser/nfpm/v2/cmd/nfpm@${{ env.NFPM_VERSION }}
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@d70bba72b1f3fd22344832f00baa16ece964efeb # v3.3.0
+  #     - name: Build Docker Image
+  #       uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
+  #       with:
+  #         file: scripts/packages/packager/Dockerfile
+  #         tags: build-signed-packager:1.0.0
+  #         context: '.'
+  #         push: false
+  #         load: true
+  #         no-cache: true
+  #         build-args: |
+  #           package_type=signed-package
+  #     - name: Build Packages
+  #       env:
+  #         INDIGO_GPG_AGENT: ${{ secrets.INDIGO_GPG_AGENT }}
+  #         NFPM_SIGNING_KEY_FILE: .key.asc
+  #       run: |
+  #         echo "$INDIGO_GPG_AGENT" | base64 --decode > .key.asc
+  #         make clean package
+  #     - name: Upload Artifacts
+  #       uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+  #       with:
+  #         name: nginx-agent-signed-snapshots
+  #         path: ./build/azure/packages/nginx-agent.tar.gz
+  #         retention-days: 1
+  #     - name: Azure Login
+  #       uses: azure/login@6b2456866fc08b011acb422a92a4aa20e2c4de32 # v2.1.0
+  #       with:
+  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
+  #     - name: Azure Upload Snapshot
+  #       uses: azure/CLI@965c8d7571d2231a54e321ddd07f7b10317f34d9 # v2.0.0
+  #       with:
+  #         inlineScript: |
+  #           if ${{ github.event_name == 'pull_request'}}; then
+  #             GIT_BRANCH=${GITHUB_HEAD_REF}
+  #           else 
+  #             GIT_BRANCH=${GITHUB_REF##*/}
+  #           fi
+  #           for i in ./build/azure/packages/nginx-agent*; do 
+  #             az storage blob upload --auth-mode=login -f "$i" -c ${{ secrets.AZURE_CONTAINER_NAME }} \
+  #             --account-name ${{ secrets.AZURE_ACCOUNT_NAME }} --overwrite -n nginx-agent/${GIT_BRANCH}/${i##*/}
+  #           done
 
   build-example:
     name: Build Grafana Dashboard Example
@@ -401,11 +401,14 @@ jobs:
       - name: Clean Grafana example
         run: make clean-grafana-example
 
-  trigger-release-workflow:
-    if: ${{ startsWith(github.ref_name, 'release-') && !github.event.pull_request.head.repo.fork }}
-    needs: [ lint]
+trigger-release-workflow:
+    if: ${{ startsWith(github.ref_name, 'release-') }}
+    needs: 
+      - lint
+      - build-unsigned-snapshot
+      - official-oss-image-integration-tests
     uses: ./.github/workflows/release-branch.yml
     secrets: inherit
     permissions:
       contents: write
-      pull-requests: write
+      pull-requests: writex
