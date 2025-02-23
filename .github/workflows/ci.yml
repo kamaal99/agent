@@ -401,7 +401,7 @@ jobs:
       - name: Clean Grafana example
         run: make clean-grafana-example
 
-trigger-release-workflow:
+  trigger-release-workflow:
     if: ${{ startsWith(github.ref_name, 'release-')}}
     needs: [ lint]
     uses: ./.github/workflows/release-branch.yml
